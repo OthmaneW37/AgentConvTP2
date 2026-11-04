@@ -1,7 +1,7 @@
 package ma.emsi.othmanemoussawi.tp2othmanemoussawi.jsf;
 
 
-import ma.emsi.othmanemoussawi.tp0.service.GenerateurReponse;
+import ma.emsi.othmanemoussawi.tp2othmanemoussawi.llm.LlmClient;
 import jakarta.faces.application.FacesMessage;
 import jakarta.faces.context.FacesContext;
 import jakarta.faces.model.SelectItem;
@@ -53,10 +53,10 @@ public class Bb implements Serializable {
     private StringBuilder conversation = new StringBuilder();
 
     /**
-     * Service pour modifier la question et générer la réponse.
+     * Client pour l'API du LLM, avec LangChain4j.
      */
     @Inject
-    private GenerateurReponse generateurReponse;
+    private LlmClient llmClient;
 
     /**
      * Contexte JSF. Utilisé pour qu'un message d'erreur s'affiche dans le formulaire.
@@ -112,10 +112,7 @@ public class Bb implements Serializable {
     }
 
     /**
-     * Envoie la question au serveur.
-     * En attendant de l'envoyer à un LLM, le serveur fait un traitement quelconque, juste pour tester :
-     * Le traitement consiste à copier la question en minuscules et à l'entourer avec "||". Le rôle système
-     * est ajouté au début de la première réponse.
+     * Envoie la question au LLM et affiche la réponse.
      *
      * @return null pour rester sur la même page.
      */
@@ -128,12 +125,21 @@ public class Bb implements Serializable {
             return null;
         }
 
-        // Traite la question pour construire la réponse.
         if (this.conversation.isEmpty()) { // Si la conversation n'a pas encore commencé
             // Fige la liste déroulante qui permet de choisir le rôle système
             this.roleSystemeChangeable = false;
+            // Ajoute le rôle système à la mémoire du LLM
+            llmClient.setSystemRole(this.roleSysteme);
         }
-        this.reponse = this.generateurReponse.genererReponse(this.question, this.roleSysteme);
+        try {
+            this.reponse = llmClient.envoyerRequete(this.question);
+        } catch (Exception e) {
+            this.reponse = "Erreur : " + e.getMessage();
+            FacesMessage message = new FacesMessage(FacesMessage.SEVERITY_ERROR,
+                    "Problème de connexion avec l'API du LLM",
+                    "Problème de connexion avec l'API du LLM : " + e.getMessage());
+            facesContext.addMessage(null, message);
+        }
 
         // La conversation contient l'historique des questions-réponses depuis le début.
         afficherConversation();
@@ -187,8 +193,8 @@ public class Bb implements Serializable {
                     """;
             this.listeRolesSysteme.add(new SelectItem(role, "Guide touristique"));
 
-            this.listeRolesSysteme.add(new SelectItem(
-                    GenerateurReponse.ROLE_TRADUCTEUR_DARIJA, "Traducteur Français-Darija"));
+            role = "You are a translator from French to Darija (Moroccan Arabic written in Latin letters).";
+            this.listeRolesSysteme.add(new SelectItem(role, "Traducteur Français-Darija"));
         }
 
         return this.listeRolesSysteme;
